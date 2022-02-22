@@ -1,100 +1,119 @@
 package ukol1;
 
-import javax.xml.stream.XMLInputFactory;
-import javax.xml.stream.XMLOutputFactory;
-import javax.xml.stream.XMLStreamReader;
-import javax.xml.stream.XMLStreamWriter;
-import java.io.ByteArrayInputStream;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.io.StringWriter;
+import javax.sql.rowset.spi.XmlWriter;
+import javax.xml.stream.*;
+import java.io.*;
+import java.util.ArrayList;
 
 public class StAXReceiptReaderWriter implements ReceiptReaderWriter {
+
+    private String name = "";
+    private String itin = "";
+    private String itemName = "";
+    private int total = 0;
+    private int itemAmount = 0;
+    private int itemUnitPrice = 0;
+    private final ArrayList<Item> items = new ArrayList<>();
+    private Receipt receipt;
+    private XMLStreamWriter xmlWriter;
+    private String actualElement;
+    private XMLStreamReader reader;
+
     @Override
     public Receipt loadReceipt(InputStream input) throws Exception {
-
-        String actualElement = "";
-        Item item = new Item();
-        Receipt receipt = new Receipt();
-
-        XMLInputFactory xmlInputFactory = XMLInputFactory.newInstance();
-        XMLStreamReader reader = xmlInputFactory.createXMLStreamReader(input);
-
-        int level = 0;
+        this.setReader(input);
 
         boolean done = false;
         while (!done) {
-            switch (reader.getEventType()) {
-                case XMLStreamReader.START_ELEMENT -> {
-                    actualElement = reader.getName().toString();
-                    padding(level++);
-                    switch (actualElement) {
-                        case "receipt" -> {receipt.setTotal(Integer.parseInt(reader.getAttributeValue(null, "total")));}
-                        case "item" -> {
-                            item.setAmount(Integer.parseInt(reader.getAttributeValue(null, "amount")));
-                            item.setUnitPrice(Integer.parseInt(reader.getAttributeValue(null, "unitPrice")));
-                        }
-                    }
-                }
-                case XMLStreamReader.END_ELEMENT -> {
-                    if (reader.getName().toString().equals("item")) {
-                        receipt.addToItems(item);
-                        item = new Item();
-                    }
-                }
-                case XMLStreamReader.CHARACTERS -> {
-                    switch (actualElement) {
-                        case "name" -> {receipt.setName(reader.getText());}
-                        case "itin" -> {receipt.setItin(reader.getText());}
-                        case "item" -> {item.setName(reader.getText());}
-                    }
-                }
-
-                default -> {}
-            }
+            this.readReceipt();
             if (reader.hasNext()) reader.next();
             else done = true;
         }
 
-        return receipt;
+        return new Receipt(name, itin, total, items);
     }
 
-    private static void padding(int level) {
-        for (int i = 0; i < level; i++)
-            System.out.print("   ");
+    private void readReceipt() {
+        switch (reader.getEventType()) {
+            case XMLStreamReader.START_ELEMENT -> {actualElement = reader.getName().toString();this.readerStartElement();}
+            case XMLStreamReader.END_ELEMENT -> {this.readerEndElement();}
+            case XMLStreamReader.CHARACTERS -> {this.readerCharacters();}
+            default -> {}
+        }
+    }
+
+    private void readerCharacters() {
+        switch (actualElement) {
+            case "name" -> {name = reader.getText();}
+            case "itin" -> {itin = reader.getText();}
+            case "item" -> {itemName = reader.getText();}
+        }
+    }
+    private void readerEndElement() {
+        if (reader.getName().toString().equals("item")) {
+            items.add(new Item(itemAmount, itemUnitPrice, itemName));
+        }
+    }
+    private void readerStartElement() {
+        switch (actualElement) {
+            case "receipt" -> {total = Integer.parseInt(reader.getAttributeValue(null, "total"));}
+            case "item" -> {
+                itemAmount =Integer.parseInt(reader.getAttributeValue(null, "amount"));
+                itemUnitPrice = Integer.parseInt(reader.getAttributeValue(null, "unitPrice"));
+            }
+        }
+    }
+
+    private void setReader(InputStream input) throws XMLStreamException {
+        XMLInputFactory xmlInputFactory = XMLInputFactory.newInstance();
+        this.reader = xmlInputFactory.createXMLStreamReader(input);
     }
 
     @Override
     public void storeReceipt(OutputStream output, Receipt receipt) throws Exception {
-        StringWriter buf = new StringWriter();
-
-        XMLOutputFactory xmlOutputFactory = XMLOutputFactory.newInstance();
-        XMLStreamWriter xmlWriter = xmlOutputFactory.createXMLStreamWriter(output);
+        this.receipt = receipt;
+        this.setXmlWriter(output);
 
         xmlWriter.writeStartDocument();
-
         xmlWriter.writeStartElement("receipt");
-        xmlWriter.writeAttribute("total", Integer.toString(receipt.getTotal()));
 
-        xmlWriter.writeStartElement("name");
-        xmlWriter.writeCharacters(receipt.getName());
-        xmlWriter.writeEndElement();
-
-        xmlWriter.writeStartElement("itin");
-        xmlWriter.writeCharacters(receipt.getItin());
-        xmlWriter.writeEndElement();
+        this.seTotal();
+        this.writeName();
+        this.writeItin();
 
         xmlWriter.writeStartElement("items");
         for (Item myItem: receipt.getItems()) {
-            xmlWriter.writeStartElement("item");
-            xmlWriter.writeAttribute("amount", Integer.toString(myItem.getAmount()));
-            xmlWriter.writeAttribute("unitPrice", Integer.toString(myItem.getUnitPrice()));
-            xmlWriter.writeCharacters(myItem.getName());
-            xmlWriter.writeEndElement();
+            writeItem(myItem);
         }
 
         xmlWriter.writeEndElement();
         xmlWriter.writeEndElement();
+    }
 
+    private void writeItem(Item item) throws XMLStreamException {
+        xmlWriter.writeStartElement("item");
+        xmlWriter.writeAttribute("amount", Integer.toString(item.getAmount()));
+        xmlWriter.writeAttribute("unitPrice", Integer.toString(item.getUnitPrice()));
+        xmlWriter.writeCharacters(item.getName());
+        xmlWriter.writeEndElement();
+    }
+    private void writeName() throws XMLStreamException {
+        xmlWriter.writeStartElement("name");
+        xmlWriter.writeCharacters(receipt.getName());
+        xmlWriter.writeEndElement();
+    }
+
+    private void writeItin() throws XMLStreamException {
+        xmlWriter.writeStartElement("itin");
+        xmlWriter.writeCharacters(receipt.getItin());
+        xmlWriter.writeEndElement();
+    }
+
+    private void setXmlWriter (OutputStream output) throws XMLStreamException {
+        XMLOutputFactory xmlOutputFactory = XMLOutputFactory.newInstance();
+        this.xmlWriter = xmlOutputFactory.createXMLStreamWriter(output);
+    }
+    private void seTotal() throws XMLStreamException {
+        this.xmlWriter.writeAttribute("total", Integer.toString(receipt.getTotal()));
     }
 }

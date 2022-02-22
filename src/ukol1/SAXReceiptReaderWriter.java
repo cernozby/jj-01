@@ -10,59 +10,20 @@ import javax.xml.stream.XMLStreamWriter;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.StringWriter;
+import java.util.ArrayList;
 
 public class SAXReceiptReaderWriter implements ReceiptReaderWriter {
+
     @Override
     public Receipt loadReceipt(InputStream input) throws Exception {
 
         var parserFactory = SAXParserFactory.newInstance();
         var parser = parserFactory.newSAXParser();
 
-        Receipt receipt = new Receipt();
+        ReceiptHandler receiptHandler = new ReceiptHandler();
+        parser.parse(input, receiptHandler);
 
-        parser.parse(input, new DefaultHandler() {
-            private String actualAlementName = "";
-            Item item = new Item();
-
-
-            @Override
-            public void startElement(String uri, String localName,
-                                     String qName, Attributes attributes) throws SAXException {
-                actualAlementName = qName;
-
-                switch (actualAlementName) {
-                    case "item" -> {
-                        item.setAmount(Integer.parseInt(attributes.getValue("amount")));
-                        item.setUnitPrice(Integer.parseInt(attributes.getValue("unitPrice")));
-                    }
-                    case "receipt" -> {
-                        receipt.setTotal(Integer.parseInt(attributes.getValue(0)));
-                    }
-
-                }
-            }
-
-            @Override
-            public void endElement(String uri, String localName, String qName)
-                    throws SAXException {
-                if ("item".equals(qName)) {
-                    receipt.addToItems(item);
-                    item = new Item();
-                }
-            }
-
-            @Override
-            public void characters(char[] ch, int start, int length)
-                    throws SAXException {
-                switch (actualAlementName) {
-                    case "name" -> {receipt.setName(new String(ch, start, length));}
-                    case "itin" -> {receipt.setItin(new String(ch, start, length));}
-                    case "item" -> {item.setName(new String(ch, start, length));}
-                }
-            }
-        });
-
-        return receipt;
+        return receiptHandler.getReceipt();
     }
 
     @Override
